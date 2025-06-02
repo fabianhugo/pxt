@@ -5,6 +5,7 @@ import * as data from "./data";
 import * as core from "./core";
 import * as sui from "./sui";
 import * as ext from "./extensionManager";
+import * as cmds from "./cmds"
 
 import ISettingsProps = pxt.editor.ISettingsProps;
 
@@ -100,6 +101,13 @@ export class Extensions extends data.Component<ISettingsProps, ExtensionsState> 
         core.showLoading("reloadproject", lf("loading..."));
         this.send(this.state.extension, { target: pxt.appTarget.id, type: "pxtpkgext", event: "exthidden" } as pxt.editor.HiddenEvent);
         this.props.parent.reloadHeaderAsync()
+            .then(async () => {
+                // Add explicit WebUSB reconnection if connected before
+                if (pxt.packetio.isConnected()) {
+                    await cmds.maybeReconnectAsync(false, true);
+                }
+                return Promise.resolve();
+            })
             .then(() => core.hideLoading("reloadproject"));
     }
 
