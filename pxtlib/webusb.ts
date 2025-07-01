@@ -254,9 +254,19 @@ namespace pxt.usb {
         private handleUSBConnected(event: USBConnectionEvent) {
             const newdev = event.device;
             this.log(`device connected ${newdev.serialNumber}`)
+            
+            // Only trigger connection change if we don't have a device or if it's a different device
             if (!this.dev && !this.connecting) {
                 this.log("attach device")
                 this.onDeviceConnectionChanged?.(true);
+            } else if (this.dev && this.dev.serialNumber !== newdev.serialNumber) {
+                // Different device connected, might want to switch
+                this.log("different device connected, but keeping current connection")
+                // Don't trigger reconnection to avoid unnecessary reinitialization
+            } else if (this.dev && this.dev.serialNumber === newdev.serialNumber) {
+                // Same device reconnected, but we're already connected
+                this.log("same device reconnected, but already connected - ignoring")
+                // Don't trigger reconnection to avoid unnecessary reinitialization
             }
         }
 
@@ -307,6 +317,13 @@ namespace pxt.usb {
 
         async reconnectAsync() {
             this.log("reconnect")
+            
+            // If already connected and ready, skip reconnection to avoid unnecessary reinitialization
+            if (this.isConnected() && this.ready && this.dev) {
+                this.log("already connected and ready, skipping reconnect");
+                return;
+            }
+            
             this.setConnecting(true);
             try {
                 await this.disconnectAsync();
@@ -528,7 +545,7 @@ namespace pxt.usb {
     }
 
     export async function tryGetDevicesAsync(): Promise<USBDevice[]> {
-        log(`webusb: get devices`)
+        log(`webusb: get devices U`)
         try {
             const devs = await navigator.usb?.getDevices();
             return devs || [];
