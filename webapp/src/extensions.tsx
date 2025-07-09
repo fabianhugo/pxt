@@ -99,6 +99,14 @@ export class Extensions extends data.Component<ISettingsProps, ExtensionsState> 
         // reload project to update changes from the editor
         core.showLoading("reloadproject", lf("loading..."));
         this.send(this.state.extension, { target: pxt.appTarget.id, type: "pxtpkgext", event: "exthidden" } as pxt.editor.HiddenEvent);
+        
+        // Log WebUSB state before extension-triggered reload
+        if (pxt.appTarget.simulator?.dynamicBoardDefinition && pxt.usb.isEnabled) {
+            const preReloadConnected = pxt.packetio.isConnected();
+            const preReloadConnecting = pxt.packetio.isConnecting();
+            console.log(`webusb: pre-extension-reload state - connected: ${preReloadConnected}, connecting: ${preReloadConnecting}`);
+        }
+        
         this.props.parent.reloadHeaderAsync()
             .then(() => core.hideLoading("reloadproject"));
     }

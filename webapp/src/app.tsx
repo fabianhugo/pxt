@@ -1720,7 +1720,57 @@ export class ProjectView
             if (h.backupRef) {
                 await workspace.restoreFromBackupAsync(h);
             }
+            
+            // Log WebUSB state before package loading for debugging
+            if (pxt.appTarget.simulator?.dynamicBoardDefinition && pxt.usb.isEnabled) {
+                const preLoadConnected = pxt.packetio.isConnected();
+                const preLoadConnecting = pxt.packetio.isConnecting();
+                console.log(`webusb: pre-loadPkgAsync state - connected: ${preLoadConnected}, connecting: ${preLoadConnecting}`);
+            }
+            
             await pkg.loadPkgAsync(h.id);
+
+            // Log WebUSB state after package loading for debugging
+            if (pxt.appTarget.simulator?.dynamicBoardDefinition && pxt.usb.isEnabled) {
+                const postLoadConnected = pxt.packetio.isConnected();
+                const postLoadConnecting = pxt.packetio.isConnecting();
+                console.log(`webusb: post-loadPkgAsync state - connected: ${postLoadConnected}, connecting: ${postLoadConnecting}`);
+            }
+
+            // Re-establish WebUSB connection after package loading when dynamicBoardDefinition is enabled
+            // This fixes the issue where the WebUSB connection is lost during project reload
+            if (pxt.appTarget.simulator?.dynamicBoardDefinition && pxt.usb.isEnabled) {
+                console.log("webusb: dynamic board definition detected, checking connection state after package reload");
+                
+                // Get current connection state before attempting reconnection
+                const wasConnected = pxt.packetio.isConnected();
+                const wasConnecting = pxt.packetio.isConnecting();
+                
+                console.log(`webusb: pre-reconnection state - connected: ${wasConnected}, connecting: ${wasConnecting}`);
+                
+                // Trigger WebUSB re-initialization to fix connection state after board definition change
+                pxt.packetio.initAsync(false)
+                    .then(wrapper => {
+                        if (wrapper) {
+                            const nowConnected = wrapper.isConnected();
+                            const nowConnecting = wrapper.isConnecting();
+                            console.log(`webusb: post-reconnection state - connected: ${nowConnected}, connecting: ${nowConnecting}`);
+                            
+                            if (!wasConnected && nowConnected) {
+                                console.log("webusb: successfully restored connection after package reload");
+                            } else if (wasConnected && !nowConnected) {
+                                console.log("webusb: connection was lost and not restored after package reload");
+                            } else if (wasConnected && nowConnected) {
+                                console.log("webusb: connection maintained through package reload");
+                            }
+                        } else {
+                            console.log("webusb: no wrapper returned from initAsync");
+                        }
+                    })
+                    .catch(e => {
+                        console.log("webusb: reconnection attempt after package reload failed", e);
+                    });
+            }
 
             if (!this.state || this.state.header != h) {
                 this.showPackageErrorsOnNextTypecheck();
