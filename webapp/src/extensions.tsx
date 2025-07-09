@@ -108,7 +108,18 @@ export class Extensions extends data.Component<ISettingsProps, ExtensionsState> 
         }
         
         this.props.parent.reloadHeaderAsync()
-            .then(() => core.hideLoading("reloadproject"));
+            .then(() => {
+                core.hideLoading("reloadproject");
+                
+                // Log final WebUSB state after reload completes
+                if (pxt.appTarget.simulator?.dynamicBoardDefinition && pxt.usb.isEnabled) {
+                    setTimeout(() => {
+                        const finalConnected = pxt.packetio.isConnected();
+                        const finalConnecting = pxt.packetio.isConnecting();
+                        console.log(`webusb: final state after extension reload - connected: ${finalConnected}, connecting: ${finalConnecting}`);
+                    }, 1000);
+                }
+            });
     }
 
     showExtensionAsync(extension: string, url: string) {

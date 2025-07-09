@@ -1748,28 +1748,54 @@ export class ProjectView
                 
                 console.log(`webusb: pre-reconnection state - connected: ${wasConnected}, connecting: ${wasConnecting}`);
                 
-                // Trigger WebUSB re-initialization to fix connection state after board definition change
-                pxt.packetio.initAsync(false)
-                    .then(wrapper => {
-                        if (wrapper) {
-                            const nowConnected = wrapper.isConnected();
-                            const nowConnecting = wrapper.isConnecting();
-                            console.log(`webusb: post-reconnection state - connected: ${nowConnected}, connecting: ${nowConnecting}`);
-                            
-                            if (!wasConnected && nowConnected) {
-                                console.log("webusb: successfully restored connection after package reload");
-                            } else if (wasConnected && !nowConnected) {
-                                console.log("webusb: connection was lost and not restored after package reload");
-                            } else if (wasConnected && nowConnected) {
-                                console.log("webusb: connection maintained through package reload");
-                            }
-                        } else {
-                            console.log("webusb: no wrapper returned from initAsync");
+                // If already connecting, wait a bit for it to complete, then check if we need to reconnect
+                if (wasConnecting && !wasConnected) {
+                    console.log("webusb: connection in progress, waiting for completion before checking");
+                    setTimeout(() => {
+                        const nowConnected = pxt.packetio.isConnected();
+                        const nowConnecting = pxt.packetio.isConnecting();
+                        console.log(`webusb: delayed check - connected: ${nowConnected}, connecting: ${nowConnecting}`);
+                        
+                        if (!nowConnected && !nowConnecting) {
+                            console.log("webusb: connection failed, attempting manual reconnection");
+                            pxt.packetio.initAsync(false)
+                                .then(wrapper => {
+                                    if (wrapper) {
+                                        const finalConnected = wrapper.isConnected();
+                                        console.log(`webusb: manual reconnection result - connected: ${finalConnected}`);
+                                    }
+                                })
+                                .catch(e => {
+                                    console.log("webusb: manual reconnection failed", e);
+                                });
+                        } else if (nowConnected) {
+                            console.log("webusb: connection recovered automatically");
                         }
-                    })
-                    .catch(e => {
-                        console.log("webusb: reconnection attempt after package reload failed", e);
-                    });
+                    }, 2000); // Wait 2 seconds for connection to complete
+                } else {
+                    // Trigger WebUSB re-initialization immediately if not connecting
+                    pxt.packetio.initAsync(false)
+                        .then(wrapper => {
+                            if (wrapper) {
+                                const nowConnected = wrapper.isConnected();
+                                const nowConnecting = wrapper.isConnecting();
+                                console.log(`webusb: post-reconnection state - connected: ${nowConnected}, connecting: ${nowConnecting}`);
+                                
+                                if (!wasConnected && nowConnected) {
+                                    console.log("webusb: successfully restored connection after package reload");
+                                } else if (wasConnected && !nowConnected) {
+                                    console.log("webusb: connection was lost and not restored after package reload");
+                                } else if (wasConnected && nowConnected) {
+                                    console.log("webusb: connection maintained through package reload");
+                                }
+                            } else {
+                                console.log("webusb: no wrapper returned from initAsync");
+                            }
+                        })
+                        .catch(e => {
+                            console.log("webusb: reconnection attempt after package reload failed", e);
+                        });
+                }
             }
 
             if (!this.state || this.state.header != h) {
