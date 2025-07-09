@@ -1720,7 +1720,25 @@ export class ProjectView
             if (h.backupRef) {
                 await workspace.restoreFromBackupAsync(h);
             }
+            
             await pkg.loadPkgAsync(h.id);
+
+            // Re-establish WebUSB connection after package loading when dynamicBoardDefinition is enabled
+            // This fixes the issue where the WebUSB connection is lost during project reload
+            if (pxt.appTarget.simulator?.dynamicBoardDefinition && pxt.usb.isEnabled) {
+                setTimeout(async () => {
+                    try {
+                        const webusb = await pxt.packetio.initAsync(false);
+                        if (webusb && (webusb as any).forceResetAsync) {
+                            await (webusb as any).forceResetAsync();
+                        } else if (webusb) {
+                            await webusb.reconnectAsync();
+                        }
+                    } catch (e) {
+                        // Silently handle reconnection failures
+                    }
+                }, 1000);
+            }
 
             if (!this.state || this.state.header != h) {
                 this.showPackageErrorsOnNextTypecheck();
