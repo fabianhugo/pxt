@@ -1740,7 +1740,7 @@ export class ProjectView
             // Re-establish WebUSB connection after package loading when dynamicBoardDefinition is enabled
             // This fixes the issue where the WebUSB connection is lost during project reload
             if (pxt.appTarget.simulator?.dynamicBoardDefinition && pxt.usb.isEnabled) {
-                console.log("webusb: dynamic board definition detected, checking connection state after package reload");
+                console.log("webusb: dynamic board definition detected, forcing complete reconnection after package reload");
                 
                 // Get current connection state before attempting reconnection
                 const wasConnected = pxt.packetio.isConnected();
@@ -1748,54 +1748,36 @@ export class ProjectView
                 
                 console.log(`webusb: pre-reconnection state - connected: ${wasConnected}, connecting: ${wasConnecting}`);
                 
-                // If already connecting, wait a bit for it to complete, then check if we need to reconnect
-                if (wasConnecting && !wasConnected) {
-                    console.log("webusb: connection in progress, waiting for completion before checking");
-                    setTimeout(() => {
-                        const nowConnected = pxt.packetio.isConnected();
-                        const nowConnecting = pxt.packetio.isConnecting();
-                        console.log(`webusb: delayed check - connected: ${nowConnected}, connecting: ${nowConnecting}`);
-                        
-                        if (!nowConnected && !nowConnecting) {
-                            console.log("webusb: connection failed, attempting manual reconnection");
-                            pxt.packetio.initAsync(false)
-                                .then(wrapper => {
-                                    if (wrapper) {
-                                        const finalConnected = wrapper.isConnected();
-                                        console.log(`webusb: manual reconnection result - connected: ${finalConnected}`);
-                                    }
-                                })
-                                .catch(e => {
-                                    console.log("webusb: manual reconnection failed", e);
-                                });
-                        } else if (nowConnected) {
-                            console.log("webusb: connection recovered automatically");
-                        }
-                    }, 2000); // Wait 2 seconds for connection to complete
-                } else {
-                    // Trigger WebUSB re-initialization immediately if not connecting
-                    pxt.packetio.initAsync(false)
-                        .then(wrapper => {
-                            if (wrapper) {
-                                const nowConnected = wrapper.isConnected();
-                                const nowConnecting = wrapper.isConnecting();
-                                console.log(`webusb: post-reconnection state - connected: ${nowConnected}, connecting: ${nowConnecting}`);
-                                
-                                if (!wasConnected && nowConnected) {
-                                    console.log("webusb: successfully restored connection after package reload");
-                                } else if (wasConnected && !nowConnected) {
-                                    console.log("webusb: connection was lost and not restored after package reload");
-                                } else if (wasConnected && nowConnected) {
-                                    console.log("webusb: connection maintained through package reload");
-                                }
+                // Force a complete WebUSB reset and reconnection
+                setTimeout(async () => {
+                    try {
+                        const webusb = await pxt.packetio.initAsync(false);
+                        if (webusb && (webusb as any).forceResetAsync) {
+                            console.log("webusb: forcing complete reset and reconnection");
+                            await (webusb as any).forceResetAsync();
+                            
+                            const finalConnected = webusb.isConnected();
+                            const finalConnecting = webusb.isConnecting();
+                            console.log(`webusb: final state after force reset - connected: ${finalConnected}, connecting: ${finalConnecting}`);
+                            
+                            if (finalConnected) {
+                                console.log("webusb: connection successfully restored after board reload");
                             } else {
-                                console.log("webusb: no wrapper returned from initAsync");
+                                console.log("webusb: connection not restored after force reset");
                             }
-                        })
-                        .catch(e => {
-                            console.log("webusb: reconnection attempt after package reload failed", e);
-                        });
-                }
+                        } else {
+                            console.log("webusb: forceResetAsync not available, using regular reconnection");
+                            // Fallback to regular reconnection
+                            if (webusb) {
+                                await webusb.reconnectAsync();
+                                const finalConnected = webusb.isConnected();
+                                console.log(`webusb: reconnection result - connected: ${finalConnected}`);
+                            }
+                        }
+                    } catch (e) {
+                        console.log("webusb: force reset failed", e);
+                    }
+                }, 1000); // Delay to allow any ongoing connections to settle
             }
 
             if (!this.state || this.state.header != h) {
