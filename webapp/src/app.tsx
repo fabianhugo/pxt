@@ -3922,11 +3922,18 @@ export class ProjectView
         }
     }
 
+    private lastNotifyTime = 0;
+
     onHeaderChanged(path: string) {
         const parts = path.split("header:");
         if (parts.length < 2) return;
         const headerId = parts[1];
         if (headerId !== this.state.header?.id) return;
+        
+        // Debounce notifications to prevent rapid-fire calls
+        const now = Date.now();
+        if (now - this.lastNotifyTime < 1000) return; // Wait at least 1 second between notifications
+        this.lastNotifyTime = now;
         
         if (pxt.commands.notifyProjectSaved) {
             pxt.commands.notifyProjectSaved(this.state.header);
