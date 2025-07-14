@@ -362,6 +362,9 @@ namespace pxt.usb {
                 await this.connectAsync(devs);
                 console.log("WebUSB: Reconnection completed successfully");
                 
+                // Connection successful - set connecting to false here, not in finally
+                this.setConnecting(false);
+                
                 // Verify the connection state
                 console.log(`WebUSB: Post-reconnection state check - dev: ${!!this.dev}, ready: ${this.ready}, connecting: ${this.connecting}`);
                 
@@ -370,9 +373,9 @@ namespace pxt.usb {
                 this.onConnectionChanged?.();
             } catch (e) {
                 console.log("WebUSB: Reconnection failed:", e.message);
-                throw e;
-            } finally {
+                // Only set connecting to false on failure
                 this.setConnecting(false);
+                throw e;
             }
         }
 
@@ -380,8 +383,7 @@ namespace pxt.usb {
             if (v != this.connecting) {
                 console.log(`WebUSB: Connecting state changing from ${this.connecting} to ${v}`);
                 this.connecting = v;
-                // Don't trigger onConnectionChanged for connecting state changes
-                // onConnectionChanged should only be triggered when actual connection state changes
+                this.onConnectionChanged?.();
             }
         }
 
@@ -428,6 +430,8 @@ namespace pxt.usb {
                     try {
                         await this.initAsync();
                         console.log("WebUSB: Device initialization completed successfully");
+                        // Connection successful - set connecting to false here
+                        this.setConnecting(false);
                         // Notify UI of successful connection
                         this.onConnectionChanged?.();
                         // success, stop trying
@@ -443,8 +447,10 @@ namespace pxt.usb {
                 const e = new Error(U.lf("Device in use or not found."));
                 (e as any).type = "devicelocked";
                 throw e;
-            } finally {
+            } catch (e) {
+                // Only set connecting to false on failure
                 this.setConnecting(false);
+                throw e;
             }
         }
 
