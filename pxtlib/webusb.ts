@@ -378,9 +378,10 @@ namespace pxt.usb {
 
         private setConnecting(v: boolean) {
             if (v != this.connecting) {
-                console.log(`WebUSB: Connection state changing from ${this.connecting} to ${v}`);
+                console.log(`WebUSB: Connecting state changing from ${this.connecting} to ${v}`);
                 this.connecting = v;
-                this.onConnectionChanged?.();
+                // Don't trigger onConnectionChanged for connecting state changes
+                // onConnectionChanged should only be triggered when actual connection state changes
             }
         }
 
@@ -427,6 +428,8 @@ namespace pxt.usb {
                     try {
                         await this.initAsync();
                         console.log("WebUSB: Device initialization completed successfully");
+                        // Notify UI of successful connection
+                        this.onConnectionChanged?.();
                         // success, stop trying
                         return;
                     } catch (e) {
