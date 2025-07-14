@@ -3928,7 +3928,6 @@ export class ProjectView
         const headerId = parts[1];
         if (headerId !== this.state.header?.id) return;
         
-        console.log(`[CORE] Project header changed for ${headerId}, notifying extensions`);
         if (pxt.commands.notifyProjectSaved) {
             pxt.commands.notifyProjectSaved(this.state.header);
         }
