@@ -361,6 +361,13 @@ namespace pxt.usb {
                 
                 await this.connectAsync(devs);
                 console.log("WebUSB: Reconnection completed successfully");
+                
+                // Verify the connection state
+                console.log(`WebUSB: Post-reconnection state check - dev: ${!!this.dev}, ready: ${this.ready}, connecting: ${this.connecting}`);
+                
+                // Additional notification to ensure UI updates
+                await U.delay(50);
+                this.onConnectionChanged?.();
             } catch (e) {
                 console.log("WebUSB: Reconnection failed:", e.message);
                 throw e;
@@ -371,6 +378,7 @@ namespace pxt.usb {
 
         private setConnecting(v: boolean) {
             if (v != this.connecting) {
+                console.log(`WebUSB: Connection state changing from ${this.connecting} to ${v}`);
                 this.connecting = v;
                 this.onConnectionChanged?.();
             }
@@ -418,11 +426,13 @@ namespace pxt.usb {
                     this.log(`serial number: ${dev.serialNumber} ${this.lastKnownDeviceSerialNumber === dev.serialNumber ? "(last known device)" : ""} `);
                     try {
                         await this.initAsync();
+                        console.log("WebUSB: Device initialization completed successfully");
                         // success, stop trying
                         return;
                     } catch (e) {
                         this.dev = undefined; // clean state
                         this.log(`connection failed, ${e.message}`);
+                        console.log("WebUSB: Device connection failed:", e.message);
                         // try next
                     }
                 }
@@ -581,10 +591,12 @@ namespace pxt.usb {
             this.log("device ready");
             this.lastKnownDeviceSerialNumber = this.dev.serialNumber;
             this.ready = true;
+            console.log("WebUSB: Device is now ready, starting read loop if needed");
             if (isHF2) {
                 // just starting, not waiting on it.
                 /* await */ this.readLoop();
             }
+            console.log("WebUSB: Notifying connection change listeners");
             this.onConnectionChanged?.();
         }
     }
