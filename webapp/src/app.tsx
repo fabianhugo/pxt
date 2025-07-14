@@ -1588,6 +1588,7 @@ export class ProjectView
     ///////////////////////////////////////////////////////////
 
     reloadHeaderAsync() {
+        console.log(`[CORE] reloadHeaderAsync called`);
         return this.loadHeaderAsync(this.state.header, this.state.editorState)
     }
 
@@ -1684,6 +1685,7 @@ export class ProjectView
     }
 
     private async internalLoadHeaderAsync(h: pxt.workspace.Header, editorState?: pxt.editor.EditorState): Promise<void> {
+        console.log(`[CORE] internalLoadHeaderAsync starting for header: ${h.id}`);
         pxt.debug(`loading ${h.id} (pxt v${h.targetVersion})`);
         this.stopSimulator(true);
         if (pxt.appTarget.simulator && pxt.appTarget.simulator.aspectRatio) {
@@ -1722,23 +1724,6 @@ export class ProjectView
             }
             
             await pkg.loadPkgAsync(h.id);
-
-            // Re-establish WebUSB connection after package loading when dynamicBoardDefinition is enabled
-            // This fixes the issue where the WebUSB connection is lost during project reload
-            if (pxt.appTarget.simulator?.dynamicBoardDefinition && pxt.usb.isEnabled) {
-                setTimeout(async () => {
-                    try {
-                        const webusb = await pxt.packetio.initAsync(false);
-                        if (webusb && (webusb as any).forceResetAsync) {
-                            await (webusb as any).forceResetAsync();
-                        } else if (webusb) {
-                            await webusb.reconnectAsync();
-                        }
-                    } catch (e) {
-                        // Silently handle reconnection failures
-                    }
-                }, 1000);
-            }
 
             if (!this.state || this.state.header != h) {
                 this.showPackageErrorsOnNextTypecheck();
@@ -1878,7 +1863,9 @@ export class ProjectView
             }
 
             // update recentUse on the header
+            console.log(`[CORE] Saving header ${h.id} to workspace`);
             await workspace.saveAsync(h);
+            console.log(`[CORE] Header ${h.id} saved to workspace`);
             await this.loadTutorialFiltersAsync();
         }
         finally {
@@ -3936,12 +3923,18 @@ export class ProjectView
     }
 
     onHeaderChanged(path: string) {
+        console.log(`[CORE] onHeaderChanged called with path: ${path}`);
         const parts = path.split("header:");
         if (parts.length < 2) return;
         const headerId = parts[1];
+        console.log(`[CORE] Header changed for id: ${headerId}, current header id: ${this.state.header?.id}`);
         if (headerId !== this.state.header?.id) return;
+        console.log(`[CORE] Calling notifyProjectSaved for matching header`);
         if (pxt.commands.notifyProjectSaved) {
+            console.log(`[CORE] notifyProjectSaved hook exists, calling it`);
             pxt.commands.notifyProjectSaved(this.state.header);
+        } else {
+            console.log(`[CORE] notifyProjectSaved hook not available`);
         }
     }
 

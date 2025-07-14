@@ -417,6 +417,7 @@ function applyExtensionResult() {
     }
     if (res.notifyProjectSaved) {
         log(`extension notifyProjectSaved`);
+        console.log(`[CORE] Setting up notifyProjectSaved extension hook`);
         pxt.commands.notifyProjectSaved = res.notifyProjectSaved;
     }
     if (res.notifyProjectCompiled) {
