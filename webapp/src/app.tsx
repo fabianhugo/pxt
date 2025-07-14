@@ -3923,18 +3923,14 @@ export class ProjectView
     }
 
     onHeaderChanged(path: string) {
-        console.log(`[CORE] onHeaderChanged called with path: ${path}`);
         const parts = path.split("header:");
         if (parts.length < 2) return;
         const headerId = parts[1];
-        console.log(`[CORE] Header changed for id: ${headerId}, current header id: ${this.state.header?.id}`);
         if (headerId !== this.state.header?.id) return;
-        console.log(`[CORE] Calling notifyProjectSaved for matching header`);
+        
+        console.log(`[CORE] Project header changed for ${headerId}, notifying extensions`);
         if (pxt.commands.notifyProjectSaved) {
-            console.log(`[CORE] notifyProjectSaved hook exists, calling it`);
             pxt.commands.notifyProjectSaved(this.state.header);
-        } else {
-            console.log(`[CORE] notifyProjectSaved hook not available`);
         }
     }
 
