@@ -300,6 +300,12 @@ namespace pxt.usb {
             
             this.log("close device");
             try {
+                // First try to release the interface to clean up properly
+                if (this.iface) {
+                    console.log("WebUSB: Releasing interface");
+                    await this.dev.releaseInterface(this.iface.interfaceNumber);
+                }
+                
                 await this.dev.close();
                 console.log("WebUSB: Device closed successfully");
             } catch (e) {
@@ -308,7 +314,8 @@ namespace pxt.usb {
             }
 
             this.clearDev();
-            await U.delay(500);
+            // Longer delay to ensure device state is fully reset
+            await U.delay(1000);
         }
 
         async forgetAsync(): Promise<boolean> {
@@ -331,9 +338,27 @@ namespace pxt.usb {
             this.setConnecting(true);
             try {
                 await this.disconnectAsync();
-                console.log("WebUSB: Disconnect completed, starting device discovery");
-                const devs = await tryGetDevicesAsync();
-                console.log(`WebUSB: Found ${devs.length} devices, attempting connection`);
+                console.log("WebUSB: Disconnect completed, waiting before device discovery");
+                // Add longer delay to ensure device state is stable
+                await U.delay(1000);
+                
+                // Try multiple times to get devices as sometimes it takes time for the device to be detected
+                let devs: USBDevice[] = [];
+                let attempts = 0;
+                const maxAttempts = 3;
+                
+                while (devs.length === 0 && attempts < maxAttempts) {
+                    attempts++;
+                    console.log(`WebUSB: Device discovery attempt ${attempts}/${maxAttempts}`);
+                    devs = await tryGetDevicesAsync();
+                    console.log(`WebUSB: Found ${devs.length} devices on attempt ${attempts}`);
+                    
+                    if (devs.length === 0 && attempts < maxAttempts) {
+                        console.log("WebUSB: No devices found, waiting before retry...");
+                        await U.delay(500);
+                    }
+                }
+                
                 await this.connectAsync(devs);
                 console.log("WebUSB: Reconnection completed successfully");
             } catch (e) {
@@ -497,6 +522,10 @@ namespace pxt.usb {
                         console.log("WebUSB: Receive operation failed due to device state change in progress - likely reconnection race condition");
                         throw new Error("Device state changing - reconnection in progress");
                     }
+                    if (e.name === "AbortError" && e.message.includes("transfer was cancelled")) {
+                        console.log("WebUSB: Transfer was cancelled - likely due to disconnection");
+                        throw new Error("Transfer cancelled - device disconnecting");
+                    }
                     throw e;
                 }
             }
@@ -578,9 +607,36 @@ namespace pxt.usb {
         log(`webusb: get devices`)
         try {
             const devs = await navigator.usb?.getDevices();
-            return devs || [];
+            console.log(`WebUSB: Raw device query returned ${devs?.length || 0} devices`);
+            
+            // Filter out devices that don't match our filters
+            const filteredDevs = (devs || []).filter(dev => {
+                const matchesFilter = filters.some(filter => {
+                    let matches = true;
+                    if (filter.vendorId !== undefined && dev.vendorId !== filter.vendorId) matches = false;
+                    if (filter.productId !== undefined && dev.productId !== filter.productId) matches = false;
+                    if (filter.classCode !== undefined) {
+                        // Check if any interface matches the class code
+                        const hasMatchingInterface = dev.configurations.some(config =>
+                            config.interfaces.some(iface =>
+                                iface.alternates.some(alt => alt.interfaceClass === filter.classCode)
+                            )
+                        );
+                        if (!hasMatchingInterface) matches = false;
+                    }
+                    return matches;
+                });
+                if (matchesFilter) {
+                    console.log(`WebUSB: Device matches filter: ${dev.manufacturerName} ${dev.productName} (${dev.serialNumber})`);
+                }
+                return matchesFilter;
+            });
+            
+            console.log(`WebUSB: Filtered device list contains ${filteredDevs.length} devices`);
+            return filteredDevs;
         }
         catch (e) {
+            console.log(`WebUSB: Error getting devices: ${e.message}`);
             reportException(e);
             return [];
         }
