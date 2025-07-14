@@ -362,8 +362,8 @@ namespace pxt.usb {
                 await this.connectAsync(devs);
                 console.log("WebUSB: Reconnection completed successfully");
                 
-                // Connection successful - set connecting to false here, not in finally
-                this.setConnecting(false);
+                // connectAsync() already called setConnecting(false) on success
+                // Don't call it again here as it confuses the UI
                 
                 // Verify the connection state
                 console.log(`WebUSB: Post-reconnection state check - dev: ${!!this.dev}, ready: ${this.ready}, connecting: ${this.connecting}`);
