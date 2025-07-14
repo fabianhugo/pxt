@@ -278,12 +278,32 @@ namespace pxt.usb {
         }
 
         async disconnectAsync() {
+            console.log("WebUSB: Starting disconnect sequence");
             this.ready = false;
-            if (!this.dev) return;
+            
+            // Wait for read loop to stop
+            let waitCount = 0;
+            while (this.readLoopStarted && waitCount < 50) { // Max 5 seconds wait
+                console.log("WebUSB: Waiting for read loop to stop...");
+                await U.delay(100);
+                waitCount++;
+            }
+            
+            if (this.readLoopStarted) {
+                console.log("WebUSB: Warning - read loop did not stop within timeout");
+            }
+            
+            if (!this.dev) {
+                console.log("WebUSB: No device to disconnect");
+                return;
+            }
+            
             this.log("close device");
             try {
                 await this.dev.close();
+                console.log("WebUSB: Device closed successfully");
             } catch (e) {
+                console.log("WebUSB: Error closing device (likely already disconnected):", e.message);
                 // just ignore errors closing, most likely device just disconnected
             }
 
@@ -306,12 +326,19 @@ namespace pxt.usb {
         }
 
         async reconnectAsync() {
+            console.log("WebUSB: Starting reconnection sequence");
             this.log("reconnect")
             this.setConnecting(true);
             try {
                 await this.disconnectAsync();
+                console.log("WebUSB: Disconnect completed, starting device discovery");
                 const devs = await tryGetDevicesAsync();
+                console.log(`WebUSB: Found ${devs.length} devices, attempting connection`);
                 await this.connectAsync(devs);
+                console.log("WebUSB: Reconnection completed successfully");
+            } catch (e) {
+                console.log("WebUSB: Reconnection failed:", e.message);
+                throw e;
             } finally {
                 this.setConnecting(false);
             }
@@ -388,20 +415,28 @@ namespace pxt.usb {
                 throw new Error("Disconnected")
             Util.assert(pkt.length <= 64);
 
-            if (!this.epOut) {
-                const res = await this.dev.controlTransferOut({
-                    requestType: "class",
-                    recipient: "interface",
-                    request: controlTransferSetReport,
-                    value: controlTransferOutReport,
-                    index: this.iface.interfaceNumber
-                }, pkt);
-                if (res.status != "ok")
-                    this.error("USB CTRL OUT transfer failed");
-            } else {
-                const res = await this.dev.transferOut(this.epOut.endpointNumber, pkt);
-                if (res.status != "ok")
-                    this.error("USB OUT transfer failed");
+            try {
+                if (!this.epOut) {
+                    const res = await this.dev.controlTransferOut({
+                        requestType: "class",
+                        recipient: "interface",
+                        request: controlTransferSetReport,
+                        value: controlTransferOutReport,
+                        index: this.iface.interfaceNumber
+                    }, pkt);
+                    if (res.status != "ok")
+                        this.error("USB CTRL OUT transfer failed");
+                } else {
+                    const res = await this.dev.transferOut(this.epOut.endpointNumber, pkt);
+                    if (res.status != "ok")
+                        this.error("USB OUT transfer failed");
+                }
+            } catch (e) {
+                if (e.name === "InvalidStateError" && e.message.includes("operation that changes the device state is in progress")) {
+                    console.log("WebUSB: Transfer operation failed due to device state change in progress - likely reconnection race condition");
+                    throw new Error("Device state changing - reconnection in progress");
+                }
+                throw e;
             }
         }
 
@@ -410,11 +445,7 @@ namespace pxt.usb {
                 return;
             this.readLoopStarted = true;
             this.log("start read loop");
-            while (true) {
-                if (!this.ready) {
-                    await U.delay(300);
-                    continue;
-                }
+            while (this.ready && this.dev) {
                 try {
                     const buf = await this.recvPacketAsync();
                     if (buf[0]) {
@@ -425,11 +456,18 @@ namespace pxt.usb {
                         await U.delay(500);
                     }
                 } catch (e) {
-                    if (this.dev)
+                    if (this.dev) {
+                        console.log("WebUSB: Read loop error during active connection:", e.message);
                         this.onError(e);
+                    } else {
+                        console.log("WebUSB: Read loop stopped due to disconnection");
+                        break;
+                    }
                     await U.delay(300);
                 }
             }
+            this.readLoopStarted = false;
+            this.log("read loop stopped");
         }
 
         async recvPacketAsync(timeoutMs?: number): Promise<Uint8Array> {
@@ -438,19 +476,28 @@ namespace pxt.usb {
                 if (!this.dev) {
                     throw new Error("Disconnected");
                 }
-                const res = await (this.epIn ? this.dev.transferIn(this.epIn.endpointNumber, 64) : this.dev.controlTransferIn({
-                    requestType: "class",
-                    recipient: "interface",
-                    request: controlTransferGetReport,
-                    value: controlTransferInReport,
-                    index: this.iface.interfaceNumber
-                }, 64));
+                
+                try {
+                    const res = await (this.epIn ? this.dev.transferIn(this.epIn.endpointNumber, 64) : this.dev.controlTransferIn({
+                        requestType: "class",
+                        recipient: "interface",
+                        request: controlTransferGetReport,
+                        value: controlTransferInReport,
+                        index: this.iface.interfaceNumber
+                    }, 64));
 
-                if (res.status != "ok")
-                    this.error("USB IN transfer failed");
-                let arr = new Uint8Array(res.data.buffer);
-                if (arr.length != 0) {
-                    return arr;
+                    if (res.status != "ok")
+                        this.error("USB IN transfer failed");
+                    let arr = new Uint8Array(res.data.buffer);
+                    if (arr.length != 0) {
+                        return arr;
+                    }
+                } catch (e) {
+                    if (e.name === "InvalidStateError" && e.message.includes("operation that changes the device state is in progress")) {
+                        console.log("WebUSB: Receive operation failed due to device state change in progress - likely reconnection race condition");
+                        throw new Error("Device state changing - reconnection in progress");
+                    }
+                    throw e;
                 }
             }
             this.error("USB IN timed out");
